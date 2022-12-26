@@ -18,7 +18,7 @@ import (
 )
 
 // Setting the global constant value "targetBits" for difficulty control
-const targetBits = 24
+const targetBits = 12
 const maxNonce = math.MaxInt64
 
 func main() {
@@ -33,6 +33,9 @@ func main() {
 		fmt.Printf("Data: %s\n", block.Data)
 		fmt.Printf("Hash: %x\n", block.Hash)
 		fmt.Printf("Timestamp : %d\n", block.Timestamp)
+		fmt.Println()
+		pow := NewProofOfWork(block)
+		fmt.Printf("PoW: %s\n", strconv.FormatBool(pow.Validate()))
 		fmt.Println()
 	}
 
@@ -50,10 +53,15 @@ func (b *ST_Block) SetHash() {
 
 /*
 	1. Function for Create New block
+	ver0.1 : We can remove the "SetHash" function and add the "PoW" function in NewBlock()
 */
 func NewBlock(data string, prevBlockHash []byte) *ST_Block {
-	block := &ST_Block{time.Now().Unix(), []byte(data), prevBlockHash, []byte{}}
-	block.SetHash()
+	block := &ST_Block{time.Now().Unix(), []byte(data), prevBlockHash, []byte{}, 0}
+	pow := NewProofOfWork(block)
+	nonce, hash := pow.Run()
+
+	block.Hash = hash[:]
+	block.Nonce = nonce
 	return block
 }
 
@@ -79,7 +87,7 @@ func NewBlockchain() *ST_Blockchain {
 
 //=========================================================================================================
 /*
-	Adding PoW
+	Adding PoW Function with PoW Validate
 */
 func NewProofOfWork(b *ST_Block) *ProofOfWork {
 	target := big.NewInt(1)
@@ -130,4 +138,15 @@ func (pow *ProofOfWork) Run() (int, []byte) {
 	fmt.Print("\n\n")
 
 	return nonce, hash[:]
+}
+
+func (pow *ProofOfWork) Validate() bool {
+	var hashInt big.Int
+
+	data := pow.prepareData(pow.block.Nonce)
+	hash := sha256.Sum256(data)
+	hashInt.SetBytes(hash[:])
+
+	isValid := hashInt.Cmp(pow.target) == -1
+	return isValid
 }

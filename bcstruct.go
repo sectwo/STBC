@@ -11,6 +11,7 @@ type ST_Block struct {
 	Data          []byte // Actual information on the block
 	PrevBlockHash []byte // Hash value of previous block
 	Hash          []byte // Hash value
+	Nonce         int
 }
 
 /*
