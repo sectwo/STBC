@@ -4,7 +4,11 @@ Block Structure Design for Constructing Blockchain
 */
 package main
 
-import "math/big"
+import (
+	"math/big"
+
+	"github.com/boltdb/bolt"
+)
 
 type ST_Block struct {
 	Timestamp     int64  // Time now
@@ -15,18 +19,35 @@ type ST_Block struct {
 }
 
 /*
-	Use arrays and maps to implement this structure
-	Arrays : Maintain aligned hashes
-	Maps : Maintain Hash-Block Pairs
+Use arrays and maps to implement this structure
+Arrays : Maintain aligned hashes
+Maps : Maintain Hash-Block Pairs
 */
 type ST_Blockchain struct {
-	blocks []*ST_Block
+	tip []byte
+	db  *bolt.DB
 }
 
 /*
-	for PoW
+for PoW
 */
 type ProofOfWork struct {
 	block  *ST_Block
 	target *big.Int
+}
+
+/*
+Blockchain Itorator for Bucket Key in BoltDB
+*/
+type ST_BlockchainIterator struct {
+	currentHash []byte
+	db          *bolt.DB
+}
+
+//==================================================================================
+/*
+	CLI Structuer
+*/
+type CLI struct {
+	bc *ST_Blockchain
 }
