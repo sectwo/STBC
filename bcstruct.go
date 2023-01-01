@@ -11,10 +11,10 @@ import (
 )
 
 type ST_Block struct {
-	Timestamp     int64  // Time now
-	Data          []byte // Actual information on the block
-	PrevBlockHash []byte // Hash value of previous block
-	Hash          []byte // Hash value
+	Timestamp     int64             // Time now
+	Transactions  []*ST_Transaction // Transactions info
+	PrevBlockHash []byte            // Hash value of previous block
+	Hash          []byte            // Hash value
 	Nonce         int
 }
 
@@ -50,4 +50,25 @@ type ST_BlockchainIterator struct {
 */
 type CLI struct {
 	bc *ST_Blockchain
+}
+
+//==================================================================================
+/*
+	Transaction Structure
+*/
+type ST_Transaction struct {
+	ID   []byte
+	Vin  []ST_TXInput
+	Vout []ST_TXOutput
+}
+
+type ST_TXOutput struct {
+	Value        int    // Satoshis((0.00000001 BTC)
+	ScriptPubKey string //
+}
+
+type ST_TXInput struct {
+	Txid      []byte // Transaction ID
+	Vout      int    // Output index for transactions
+	ScriptSig string // Scripts that provide data used in "ScriptPubKey"
 }

@@ -9,9 +9,11 @@ package main
 import (
 	"bytes"
 	"crypto/sha256"
+	"encoding/gob"
 	"encoding/json"
 	"flag"
 	"fmt"
+	"log"
 	"math"
 	"math/big"
 	"os"
@@ -24,9 +26,12 @@ import (
 // Setting the global constant value "targetBits" for difficulty control
 const targetBits = 16
 const maxNonce = math.MaxInt64
+const subsidy = 50
+const genesisCoinbaseData = "The Times 03/Jan/2009 Chancellor on brink of second bailout for banks"
+const address = "user_address"
 
 func main() {
-	bc := NewBlockchain()
+	bc := NewBlockchain(address)
 	defer bc.db.Close()
 
 	cli := CLI{bc}
@@ -36,19 +41,19 @@ func main() {
 /*
 0. Set Block informaintion with SHA-256 function for hash value calculation
 */
-func (b *ST_Block) SetHash() {
-	timestamp := []byte(strconv.FormatInt(b.Timestamp, 10))
-	headers := bytes.Join([][]byte{b.PrevBlockHash, b.Data, timestamp}, []byte{})
-	hash := sha256.Sum256(headers)
-	b.Hash = hash[:]
-}
+// func (b *ST_Block) SetHash() {
+// 	timestamp := []byte(strconv.FormatInt(b.Timestamp, 10))
+// 	headers := bytes.Join([][]byte{b.PrevBlockHash, b.Data, timestamp}, []byte{})
+// 	hash := sha256.Sum256(headers)
+// 	b.Hash = hash[:]
+// }
 
 /*
 1. Function for Create New block
 ver0.1 : We can remove the "SetHash" function and add the "PoW" function in NewBlock()
 */
-func NewBlock(data string, prevBlockHash []byte) *ST_Block {
-	block := &ST_Block{time.Now().Unix(), []byte(data), prevBlockHash, []byte{}, 0}
+func NewBlock(transactions []*ST_Transaction, prevBlockHash []byte) *ST_Block {
+	block := &ST_Block{time.Now().Unix(), transactions, prevBlockHash, []byte{}, 0}
 	pow := NewProofOfWork(block)
 	nonce, hash := pow.NB_Run()
 
@@ -69,7 +74,7 @@ func NewBlock(data string, prevBlockHash []byte) *ST_Block {
 // 	bc.blocks = append(bc.blocks, newBlock)
 // }
 
-func (bc *ST_Blockchain) AddBlock(data string) {
+func (bc *ST_Blockchain) AddBlock(transactions []*ST_Transaction) {
 	var lastHash []byte
 
 	err := bc.db.View(func(tx *bolt.Tx) error {
@@ -82,7 +87,7 @@ func (bc *ST_Blockchain) AddBlock(data string) {
 		fmt.Println("err msg : ", err.Error())
 	}
 
-	newBlock := NewBlock(data, lastHash)
+	newBlock := NewBlock(transactions, lastHash)
 
 	err = bc.db.Update(func(tx *bolt.Tx) error {
 		b := tx.Bucket([]byte("blocksBucket"))
@@ -98,11 +103,12 @@ func (bc *ST_Blockchain) AddBlock(data string) {
 
 }
 
-func NewGenesisBlock() *ST_Block {
-	return NewBlock("Genesis Block", []byte{})
+func NewGenesisBlock(coinbase *ST_Transaction) *ST_Block {
+	//return NewBlock("Genesis Block", []byte{})
+	return NewBlock([]*ST_Transaction{coinbase}, []byte{})
 }
 
-func NewBlockchain() *ST_Blockchain {
+func NewBlockchain(address string) *ST_Blockchain {
 	var tip []byte
 	db, err := bolt.Open("sample.db", 0600, nil)
 	if err != nil {
@@ -112,7 +118,8 @@ func NewBlockchain() *ST_Blockchain {
 	err = db.Update(func(tx *bolt.Tx) error {
 		b := tx.Bucket([]byte("blocksBucket"))
 		if b == nil {
-			genesis := NewGenesisBlock()
+			cbtx := NewCoinbaseTX(address, genesisCoinbaseData)
+			genesis := NewGenesisBlock(cbtx)
 			b, err := tx.CreateBucket([]byte("blocksBucket"))
 			if err != nil {
 				fmt.Println("error msg : ", err.Error())
@@ -154,7 +161,7 @@ func (pow *ProofOfWork) prepareData(nonce int) []byte {
 	data := bytes.Join(
 		[][]byte{
 			pow.block.PrevBlockHash,
-			pow.block.Data,
+			pow.block.HashTransactions(),
 			IntToHex(pow.block.Timestamp),
 			IntToHex(int64(targetBits)),
 			IntToHex(int64(nonce)),
@@ -164,12 +171,23 @@ func (pow *ProofOfWork) prepareData(nonce int) []byte {
 	return data
 }
 
+func (b *ST_Block) HashTransactions() []byte {
+	var txHashes [][]byte
+	var txHash [32]byte
+
+	for _, tx := range b.Transactions {
+		txHashes = append(txHashes, tx.ID)
+	}
+	txHash = sha256.Sum256(bytes.Join(txHashes, []byte{}))
+	return txHash[:]
+}
+
 func (pow *ProofOfWork) NB_Run() (int, []byte) {
 	var hashInt big.Int
 	var hash [32]byte
 	nonce := 0
 
-	fmt.Printf("Mining the block containing \"%s\"\n", pow.block.Data)
+	fmt.Printf("Mining the block containing \"%s\"\n", pow.block.HashTransactions())
 
 	for nonce < maxNonce {
 		data := pow.prepareData(nonce)
@@ -193,7 +211,8 @@ func (cli *CLI) Run() {
 
 	addBlockCmd := flag.NewFlagSet("addblock", flag.ExitOnError)
 	printChainCmd := flag.NewFlagSet("printchain", flag.ExitOnError)
-	addBlockData := addBlockCmd.String("data", "", "Block data")
+
+	//addBlockData := addBlockCmd.String("data", "", "Block data")
 
 	switch os.Args[1] {
 	case "addblock":
@@ -210,14 +229,21 @@ func (cli *CLI) Run() {
 		cli.printUsage()
 		os.Exit(1)
 	}
+	// if addBlockCmd.Parsed() {
+	// 	if *addBlockData == "" {
+	// 		addBlockCmd.Usage()
+	// 		os.Exit(1)
+	// 	}
+	// 	cli.addBlock(*addBlockData)
+	// }
 
-	if addBlockCmd.Parsed() {
-		if *addBlockData == "" {
-			addBlockCmd.Usage()
-			os.Exit(1)
-		}
-		cli.addBlock(*addBlockData)
-	}
+	// if addBlockCmd.Parsed() {
+	// 	if *addBlockData == "" {
+	// 		addBlockCmd.Usage()
+	// 		os.Exit(1)
+	// 	}
+	// 	cli.addBlock(*addBlockData)
+	// }
 
 	if printChainCmd.Parsed() {
 		cli.printChain()
@@ -305,10 +331,10 @@ func (cli *CLI) printUsage() {
 	fmt.Println("  startnode -miner ADDRESS - Start a node with ID specified in NODE_ID env. var. -miner enables mining")
 }
 
-func (cli *CLI) addBlock(data string) {
-	cli.bc.AddBlock(data)
-	fmt.Println("Success!")
-}
+// func (cli *CLI) addBlock(data string) {
+// 	cli.bc.AddBlock(data)
+// 	fmt.Println("Success!")
+// }
 
 func (cli *CLI) printChain() {
 	bci := cli.bc.Iterator()
@@ -316,7 +342,7 @@ func (cli *CLI) printChain() {
 	for {
 		block := bci.Next()
 		fmt.Printf("Prev. hash: %x\n", block.PrevBlockHash)
-		fmt.Printf("Data: %s\n", block.Data)
+		fmt.Printf("Data: %s\n", block.HashTransactions())
 		fmt.Printf("Hash: %x\n", block.Hash)
 
 		pow := NewProofOfWork(block)
@@ -327,4 +353,39 @@ func (cli *CLI) printChain() {
 			break
 		}
 	}
+}
+
+//=============================================================================
+/*
+Coin baseed Transactions (for Genesis Block)
+*/
+// func NewTransaction(vin []ST_TXInput, vout []ST_TXOutput) *ST_Transaction {
+// 	tx := ST_Transaction{nil, vin, vout}
+// 	tx.SetID()
+
+// 	return &tx
+// }
+
+func (tx *ST_Transaction) SetID() {
+	buf := new(bytes.Buffer)
+
+	encoder := gob.NewEncoder(buf)
+	err := encoder.Encode(tx)
+	if err != nil {
+		log.Panic(err)
+	}
+
+	hash := sha256.Sum256(buf.Bytes())
+	tx.ID = hash[:]
+}
+
+func NewCoinbaseTX(to, data string) *ST_Transaction {
+	if data == "" {
+		data = fmt.Sprintf("Reward to '%s'", to)
+	}
+	txin := ST_TXInput{[]byte{}, -1, data}
+	txout := ST_TXOutput{subsidy, to}
+	tx := ST_Transaction{nil, []ST_TXInput{txin}, []ST_TXOutput{txout}}
+	tx.SetID()
+	return &tx
 }
