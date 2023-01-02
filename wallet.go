@@ -6,7 +6,6 @@ import (
 	"crypto/elliptic"
 	"crypto/rand"
 	"crypto/sha256"
-	"encoding/gob"
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
@@ -79,31 +78,26 @@ func NewKeyStore() *KeyStore {
 		if err != nil {
 			log.Panic(err)
 		}
-
-		gob.Register(elliptic.P256())
-
-		decoder := gob.NewDecoder(bytes.NewReader(fileContent))
-		err = decoder.Decode(&keyStore)
-		if err != nil {
-			log.Panic(err)
-		}
+		json.Unmarshal(fileContent, &keyStore)
 	}
-
 	return &keyStore
 }
 
 // .Wallets 와 wallet.dat 파일을 내용을 동기화시키기위한 함수
 // KeyStore 자체를 인코딩하여 저장함
-// 2023.01.02_sectwo : 저장시 오류 발생 수정 필요(.dat 파일에 재대로 저장되지 않는 오류) 해결을 위해 json 파일로 변경 시도 예정 ver0.6에서
+// 2023.01.02_sectwo : 저장시 오류 발생 수정 필요(.dat 파일에 재대로 저장되지 않는 오류) 해결을 위해 json 파일로 변경 시도 예정 ver0.7에서
 func (ks *KeyStore) Save() {
 
-	result, err := json.Marshal(elliptic.P256())
+	result, err := json.Marshal(ks)
 	if err != nil {
 		fmt.Println("error : ", err.Error())
 		log.Panic(err)
 	}
 
-	err = ioutil.WriteFile(walletFile, result, 0644)
+	var out bytes.Buffer
+	json.Indent(&out, result, "", "	")
+
+	err = ioutil.WriteFile(walletFile, []byte(out.String()), 0644)
 	if err != nil {
 		log.Panic(err)
 	}
