@@ -7,7 +7,7 @@ import (
 )
 
 // 8) 트랜잭션 기능으로 변경점
-//		- Data 필드 대신 Transactions 필드로 대체
+//   - Data 필드 대신 Transactions 필드로 대체
 type Block struct {
 	PrevBlockHash []byte
 	Hash          []byte

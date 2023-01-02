@@ -12,10 +12,10 @@ import (
 
 // UTXO를 찾기위한 메서드
 // UTXO를 찾기위한 과정 :
-// 	1. 맨 마지막 블록에서 역순으로 제네시스 블록까지 진행
-//	2. 모든 TXOutput 에서 TXInput 에 참조된 적이 있는 트랜잭션 조사(입력값이 없는 코인베이스 트랜잭션을 제외한 트랜잭션에 대해 TXInput을 조사)
-//	3. 소비(Spent)된 트랜잭션 출력(Spent Transaction Outputs) 집합을 찾기
-//	4. 체인을 따라가며 이미 소비된 트랜잭션 집합을 제외하게 되면 소비되지 않은 트랜잭션 집합인 UTXO를 찾을 수 있음
+//  1. 맨 마지막 블록에서 역순으로 제네시스 블록까지 진행
+//  2. 모든 TXOutput 에서 TXInput 에 참조된 적이 있는 트랜잭션 조사(입력값이 없는 코인베이스 트랜잭션을 제외한 트랜잭션에 대해 TXInput을 조사)
+//  3. 소비(Spent)된 트랜잭션 출력(Spent Transaction Outputs) 집합을 찾기
+//  4. 체인을 따라가며 이미 소비된 트랜잭션 집합을 제외하게 되면 소비되지 않은 트랜잭션 집합인 UTXO를 찾을 수 있음
 func (bc *Blockchain) FindUnspentTransactions(address string) []*Transaction {
 	bci := NewBlockchainIterator(bc)
 
