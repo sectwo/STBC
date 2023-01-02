@@ -1,155 +1,65 @@
 /*
-	    This project is to development of Blockchain core(bitcoin)
+This project is to development of Blockchain core(bitcoin)
 
-		Author: sectwo@gmail.com
-		Date: 26 Dec, 2022
+순서 :
+ 1. 새로운 블록 생성(MewBlock)
+ 2. 블록의 해시 생성(SetHash)
+ 3. 새로운 블록체인의 생성(NewBlockchain)
+ 4. 블록체인에 블록추가
+ 5. 작업증명 추가
+ 6. 영속성 부여(BlotDB 사용) - 기존 Blockchain이 가진 Block을 db로 변경
+ 7. 테스트를 위한 CLI 추가
+ 8. Transaction 기능 추가
+
+Author: sectwo@gmail.com
+Date: 26 Dec, 2022
 */
 package main
 
 import (
 	"bytes"
 	"crypto/sha256"
-	"encoding/gob"
 	"encoding/json"
-	"flag"
 	"fmt"
 	"log"
 	"math"
 	"math/big"
-	"os"
 	"strconv"
 	"time"
 
 	"github.com/boltdb/bolt"
 )
 
-// Setting the global constant value "targetBits" for difficulty control
-const targetBits = 16
-const maxNonce = math.MaxInt64
-const subsidy = 50
-const genesisCoinbaseData = "The Times 03/Jan/2009 Chancellor on brink of second bailout for banks"
-const address = "user_address"
+const (
+	BlocksBucket = "blocks"
+	dbFile       = "chain.db"
+	targetBits   = 16
+)
 
 func main() {
-	bc := NewBlockchain(address)
-	defer bc.db.Close()
-
-	cli := CLI{bc}
+	cli := CLI{}
 	cli.Run()
 }
 
-/*
-0. Set Block informaintion with SHA-256 function for hash value calculation
-*/
-// func (b *ST_Block) SetHash() {
-// 	timestamp := []byte(strconv.FormatInt(b.Timestamp, 10))
-// 	headers := bytes.Join([][]byte{b.PrevBlockHash, b.Data, timestamp}, []byte{})
-// 	hash := sha256.Sum256(headers)
-// 	b.Hash = hash[:]
-// }
-
-/*
-1. Function for Create New block
-ver0.1 : We can remove the "SetHash" function and add the "PoW" function in NewBlock()
-*/
-func NewBlock(transactions []*ST_Transaction, prevBlockHash []byte) *ST_Block {
-	block := &ST_Block{time.Now().Unix(), transactions, prevBlockHash, []byte{}, 0}
+// 8) 트랜잭션 기능으로 인한 변경점
+//   - 기존 입력파라메타의 data를 trasaction으로 변경
+func NewBlock(transactions []*Transaction, prevBlockHash []byte) *Block {
+	block := &Block{prevBlockHash, []byte{}, time.Now().Unix(), transactions, 0}
 	pow := NewProofOfWork(block)
-	nonce, hash := pow.NB_Run()
+	block.Nonce, block.Hash = pow.Run()
 
-	block.Hash = hash[:]
-	block.Nonce = nonce
 	return block
 }
 
-/*
-2. Implementation of blockchain functionality
-#1. addBlock : Block Add-in
-#2. NewGenesisBlock : Genesis block generation capability for adding new blocks
-#3. NewBlockchain : Start New Blockchain
-*/
-// func (bc *ST_Blockchain) AddBlock(data string) {
-// 	prevBlock := bc.blocks[len(bc.blocks)-1]
-// 	newBlock := NewBlock(data, prevBlock.Hash)
-// 	bc.blocks = append(bc.blocks, newBlock)
-// }
+func (b *Block) SetHash() {
+	header := bytes.Join([][]byte{
+		b.PrevBlockHash,
+		b.HashTransaction(),
+		IntToHex(b.Timestamp),
+	}, []byte{})
 
-func (bc *ST_Blockchain) AddBlock(transactions []*ST_Transaction) {
-	var lastHash []byte
-
-	err := bc.db.View(func(tx *bolt.Tx) error {
-		b := tx.Bucket([]byte("blocksBucket"))
-		lastHash = b.Get([]byte("l"))
-
-		return nil
-	})
-	if err != nil {
-		fmt.Println("err msg : ", err.Error())
-	}
-
-	newBlock := NewBlock(transactions, lastHash)
-
-	err = bc.db.Update(func(tx *bolt.Tx) error {
-		b := tx.Bucket([]byte("blocksBucket"))
-		err := b.Put(newBlock.Hash, newBlock.Serialize())
-		if err != nil {
-			fmt.Println("err msg : ", err.Error())
-		}
-		err = b.Put([]byte("l"), newBlock.Hash)
-		bc.tip = newBlock.Hash
-
-		return nil
-	})
-
-}
-
-func NewGenesisBlock(coinbase *ST_Transaction) *ST_Block {
-	//return NewBlock("Genesis Block", []byte{})
-	return NewBlock([]*ST_Transaction{coinbase}, []byte{})
-}
-
-func NewBlockchain(address string) *ST_Blockchain {
-	var tip []byte
-	db, err := bolt.Open("sample.db", 0600, nil)
-	if err != nil {
-		fmt.Println("error open DB Message : ", err.Error())
-	}
-
-	err = db.Update(func(tx *bolt.Tx) error {
-		b := tx.Bucket([]byte("blocksBucket"))
-		if b == nil {
-			cbtx := NewCoinbaseTX(address, genesisCoinbaseData)
-			genesis := NewGenesisBlock(cbtx)
-			b, err := tx.CreateBucket([]byte("blocksBucket"))
-			if err != nil {
-				fmt.Println("error msg : ", err.Error())
-			}
-			err = b.Put(genesis.Hash, genesis.Serialize())
-			err = b.Put([]byte("l"), genesis.Hash)
-			tip = genesis.Hash
-		} else {
-			tip = b.Get([]byte("l"))
-		}
-		return nil
-	})
-
-	bc := ST_Blockchain{tip, db}
-
-	return &bc
-
-	//return &ST_Blockchain{[]*ST_Block{NewGenesisBlock()}}
-}
-
-//=========================================================================================================
-/*
-	Adding PoW Function with PoW Validate
-*/
-func NewProofOfWork(b *ST_Block) *ProofOfWork {
-	target := big.NewInt(1)
-	target.Lsh(target, uint(256-targetBits))
-
-	pow := &ProofOfWork{b, target}
-	return pow
+	hash := sha256.Sum256(header)
+	b.Hash = hash[:]
 }
 
 func IntToHex(int_value int64) []byte {
@@ -157,42 +67,119 @@ func IntToHex(int_value int64) []byte {
 	return []byte(hex_value)
 }
 
-func (pow *ProofOfWork) prepareData(nonce int) []byte {
-	data := bytes.Join(
-		[][]byte{
-			pow.block.PrevBlockHash,
-			pow.block.HashTransactions(),
-			IntToHex(pow.block.Timestamp),
-			IntToHex(int64(targetBits)),
-			IntToHex(int64(nonce)),
-		},
-		[]byte{},
-	)
+// 새로운 블록체인 생성 - 제네시스 블록 생성으로 시작
+// 6) 영속성으로 인한 변경점
+//   - 기존 블록 정보가 아닌 db의 정보와 LastHash값을 가져야함
+//   - 이를 위해 버킷(RDB에서의 테이블)에 블록을 담고 조회 할 수 있어야함
+//
+// 7) Cli 추가로 인한 변경점
+//   - 기존 이미 블록체인이 존재하는 경우에 대한 Genesis Block 생성은 사라지고 기존의 블록체인이 존재하는 경우, 기존 블록체인을 얻어오기 위해 사용됨
+func NewBlockchain() *Blockchain {
+
+	blockchain := new(Blockchain)
+	var l []byte
+
+	db, err := bolt.Open(dbFile, 0600, nil)
+	if err != nil {
+		fmt.Println("error msg : ", err.Error())
+		log.Panic(err)
+	}
+
+	err = db.Update(func(tx *bolt.Tx) error {
+		b := tx.Bucket([]byte(BlocksBucket))
+
+		// 이미 블록체인이 존재하는 경우
+		l = b.Get([]byte("l"))
+
+		return nil
+	})
+	if err != nil {
+		fmt.Println("error msg : ", err.Error())
+		log.Panic(err)
+	}
+	blockchain.db = db
+	blockchain.l = l
+
+	return blockchain
+}
+
+// 새로운 블록체인에 블록연결([제네시스블록]-[새롭게 생성되는 블록]-[...])
+// 6) 영속성으로 인한 변경점
+//   - .blocks에 저장하던 것을 boltDB에 저장할 수 있도록 변경
+//   - 마지막 블록해시 l
+//
+// 8) 트랜잭션 기능으로 인한 변경점
+//   - NewBlock() 변경으로 입력 파라메타와 기능 수정
+func (bc *Blockchain) AddBlock(transactions []*Transaction) {
+	block := NewBlock(transactions, bc.l)
+	err := bc.db.Update(func(tx *bolt.Tx) error {
+		b := tx.Bucket([]byte(BlocksBucket))
+
+		err := b.Put(block.Hash, block.Serialize())
+		if err != nil {
+			fmt.Println("error : ", err.Error())
+			log.Panic(err)
+		}
+
+		err = b.Put([]byte("l"), block.Hash)
+		if err != nil {
+			fmt.Println("error : ", err.Error())
+			log.Panic(err)
+		}
+		bc.l = block.Hash
+
+		return nil
+	})
+	if err != nil {
+		fmt.Println("error : ", err.Error())
+		log.Panic(err)
+	}
+}
+
+//================================================================================
+// 5) 작업증명
+// - 작업증명은 채굴이라 말할 수 있으며, 끝 자리(0x000000~~~)과 같은 비트수에 맞는 해시값을 찾는 작업
+// - 해시값을 비교해가며 찾아야하며, targetbits를 통해 난이도 설정 가능
+// - 난이도는 16진수를 나타내며 24의 경우 24bit 즉, 끝자리 0이 6개를 의미함
+
+// target 지정을 우선하며 Shift 연산자를 사용하여 target을 지정함
+func NewProofOfWork(b *Block) *ProofOfWork {
+	target := big.NewInt(1)
+	target.Lsh(target, 256-targetBits)
+
+	pow := &ProofOfWork{b, target}
+	return pow
+}
+
+// target과 prepareData를 통해 준비한 데이터를 해시화 한 값과 비교하여 더 작으면 완료시킴
+// 작업 증며을위한 실질적인 메서드
+// 이때 nonce는 반복을 위한 단순한 counter용도로 사용
+// 8) 트랜잭션 기능으로 인한 변경점
+//   - 작업증명을 위한 준비데이터를 data에서 Block.HashTransaction()을 사용하여 트랜잭션을 해싱
+func (pow *ProofOfWork) prepareData(nonce int64) []byte {
+	data := bytes.Join([][]byte{
+		pow.block.PrevBlockHash,
+		pow.block.HashTransaction(),
+		IntToHex(pow.block.Timestamp),
+		IntToHex(nonce),
+		IntToHex(targetBits),
+	}, []byte{})
+
 	return data
 }
 
-func (b *ST_Block) HashTransactions() []byte {
-	var txHashes [][]byte
-	var txHash [32]byte
+// 작업 증명을위한 실질적인 메서드
+// target과 prepareData를 통해 준비한 데이터를 해시화 한 값과 비교하여 더 작으면 완료시킴
+//   - target보다 더 작은값을 찾기 위해 nonce를 증가 시키며 반복
+func (pow *ProofOfWork) Run() (int64, []byte) {
+	var nonce int64
 
-	for _, tx := range b.Transactions {
-		txHashes = append(txHashes, tx.ID)
-	}
-	txHash = sha256.Sum256(bytes.Join(txHashes, []byte{}))
-	return txHash[:]
-}
-
-func (pow *ProofOfWork) NB_Run() (int, []byte) {
 	var hashInt big.Int
 	var hash [32]byte
-	nonce := 0
 
-	fmt.Printf("Mining the block containing \"%s\"\n", pow.block.HashTransactions())
-
-	for nonce < maxNonce {
+	for nonce < math.MaxInt64 {
 		data := pow.prepareData(nonce)
 		hash = sha256.Sum256(data)
-		fmt.Printf("\r%x", hash)
 
 		hashInt.SetBytes(hash[:])
 		if hashInt.Cmp(pow.target) == -1 {
@@ -201,191 +188,141 @@ func (pow *ProofOfWork) NB_Run() (int, []byte) {
 			nonce++
 		}
 	}
-	fmt.Print("\n\n")
 
 	return nonce, hash[:]
 }
 
-func (cli *CLI) Run() {
-	cli.validateArgs()
-
-	addBlockCmd := flag.NewFlagSet("addblock", flag.ExitOnError)
-	printChainCmd := flag.NewFlagSet("printchain", flag.ExitOnError)
-
-	//addBlockData := addBlockCmd.String("data", "", "Block data")
-
-	switch os.Args[1] {
-	case "addblock":
-		err := addBlockCmd.Parse(os.Args[2:])
-		if err != nil {
-			fmt.Println("error msg : ", err.Error())
-		}
-	case "printchain":
-		err := printChainCmd.Parse(os.Args[2:])
-		if err != nil {
-			fmt.Println("error msg : ", err.Error())
-		}
-	default:
-		cli.printUsage()
-		os.Exit(1)
-	}
-	// if addBlockCmd.Parsed() {
-	// 	if *addBlockData == "" {
-	// 		addBlockCmd.Usage()
-	// 		os.Exit(1)
-	// 	}
-	// 	cli.addBlock(*addBlockData)
-	// }
-
-	// if addBlockCmd.Parsed() {
-	// 	if *addBlockData == "" {
-	// 		addBlockCmd.Usage()
-	// 		os.Exit(1)
-	// 	}
-	// 	cli.addBlock(*addBlockData)
-	// }
-
-	if printChainCmd.Parsed() {
-		cli.printChain()
-	}
-}
-
-func (pow *ProofOfWork) Validate() bool {
+// 작업증명(PoW)를 통해 나온 것인지를 증명하기위한 메서드
+// 블록에 존재하는 Nonce값을 사용하여 한번의 사이클로 증명 가능
+func (pow *ProofOfWork) Validate(b *Block) bool {
 	var hashInt big.Int
-
-	data := pow.prepareData(pow.block.Nonce)
+	data := pow.prepareData(b.Nonce)
 	hash := sha256.Sum256(data)
-	hashInt.SetBytes(hash[:])
 
+	hashInt.SetBytes(hash[:])
 	isValid := hashInt.Cmp(pow.target) == -1
+
 	return isValid
 }
 
-//=========================================================================================================
-/*
-	Adding Database
-*/
+//================================================================================
+// 6) 영속성 추가
 
-func (b *ST_Block) Serialize() []byte {
+// BoltDB로 데이터를 전송하기위해 블록정보를 직렬화 하기 위한 메서드
+func (b *Block) Serialize() []byte {
 
 	result, err := json.Marshal(b)
 	if err != nil {
 		fmt.Println("error : ", err.Error())
+		log.Panic(err)
 	}
 
 	return result
 }
 
-func DeserializeBlock(d []byte) *ST_Block {
+// BoltDB에서 조회시 BlotDB의 데이터를 전송하기위해 블록정보를 역직렬화 하기 위한 메서드
+func DeserializeBlock(d []byte) *Block {
 
-	var block ST_Block
+	var block Block
 
 	json.Unmarshal(d, &block)
 
 	return &block
 }
 
-func (bc *ST_Blockchain) Iterator() *ST_BlockchainIterator {
-	bci := &ST_BlockchainIterator{bc.tip, bc.db}
-	return bci
+// 블록 조회를 위한 블록체인 내부 순회 반복자 함수
+func NewBlockchainIterator(bc *Blockchain) *blockchainIterator {
+	return &blockchainIterator{bc.db, bc.l}
 }
 
-func (i *ST_BlockchainIterator) Next() *ST_Block {
-	var block *ST_Block
+// BoltDB를 조회하여 버킷(블록)을 반환하며 가장 마지막 블록-> 최초의 블록 순서로 조회
+func (i *blockchainIterator) Next() *Block {
+	var block *Block
 
 	err := i.db.View(func(tx *bolt.Tx) error {
-		b := tx.Bucket([]byte("blocksBucket"))
-		encodedBlock := b.Get(i.currentHash)
+		b := tx.Bucket([]byte(BlocksBucket))
+
+		encodedBlock := b.Get(i.hash)
 		block = DeserializeBlock(encodedBlock)
+
+		i.hash = block.PrevBlockHash
+
 		return nil
 	})
-	if err != nil {
-		fmt.Println("error msg : ", err.Error())
-	}
-
-	i.currentHash = block.PrevBlockHash
-	return block
-}
-
-//=============================================================================
-/*
-for CLI
-*/
-
-func (cli *CLI) validateArgs() {
-	if len(os.Args) < 2 {
-		cli.printUsage()
-		os.Exit(1)
-	}
-}
-
-func (cli *CLI) printUsage() {
-	fmt.Println("Usage:")
-	fmt.Println("  createblockchain -address ADDRESS - Create a blockchain and send genesis block reward to ADDRESS")
-	fmt.Println("  createwallet - Generates a new key-pair and saves it into the wallet file")
-	fmt.Println("  getbalance -address ADDRESS - Get balance of ADDRESS")
-	fmt.Println("  listaddresses - Lists all addresses from the wallet file")
-	fmt.Println("  printchain - Print all the blocks of the blockchain")
-	fmt.Println("  reindexutxo - Rebuilds the UTXO set")
-	fmt.Println("  send -from FROM -to TO -amount AMOUNT -mine - Send AMOUNT of coins from FROM address to TO. Mine on the same node, when -mine is set.")
-	fmt.Println("  startnode -miner ADDRESS - Start a node with ID specified in NODE_ID env. var. -miner enables mining")
-}
-
-// func (cli *CLI) addBlock(data string) {
-// 	cli.bc.AddBlock(data)
-// 	fmt.Println("Success!")
-// }
-
-func (cli *CLI) printChain() {
-	bci := cli.bc.Iterator()
-
-	for {
-		block := bci.Next()
-		fmt.Printf("Prev. hash: %x\n", block.PrevBlockHash)
-		fmt.Printf("Data: %s\n", block.HashTransactions())
-		fmt.Printf("Hash: %x\n", block.Hash)
-
-		pow := NewProofOfWork(block)
-		fmt.Printf("PoW: %s\n", strconv.FormatBool(pow.Validate()))
-		fmt.Println()
-
-		if len(block.PrevBlockHash) == 0 {
-			break
-		}
-	}
-}
-
-//=============================================================================
-/*
-Coin baseed Transactions (for Genesis Block)
-*/
-// func NewTransaction(vin []ST_TXInput, vout []ST_TXOutput) *ST_Transaction {
-// 	tx := ST_Transaction{nil, vin, vout}
-// 	tx.SetID()
-
-// 	return &tx
-// }
-
-func (tx *ST_Transaction) SetID() {
-	buf := new(bytes.Buffer)
-
-	encoder := gob.NewEncoder(buf)
-	err := encoder.Encode(tx)
 	if err != nil {
 		log.Panic(err)
 	}
 
-	hash := sha256.Sum256(buf.Bytes())
-	tx.ID = hash[:]
+	return block
 }
 
-func NewCoinbaseTX(to, data string) *ST_Transaction {
-	if data == "" {
-		data = fmt.Sprintf("Reward to '%s'", to)
+// 다음 블록이 존재하는지 검사하기 위한 메서드
+// 반복자의 hash가 다음블록과 같은지 같지 않은지 비교 (작을땐 -1, 클땐 1, 같을땐 0)
+func (i *blockchainIterator) HasNext() bool {
+	result := bytes.Compare(i.hash, []byte{}) != 0
+	fmt.Println(result)
+	return result
+}
+
+//================================================================================
+// 7) Cli 기능 추가
+
+// 블록체인을 새로 생성(제네시스 블록 생성)
+// 8) 트랜잭션 기능 추가로 인한 변경점
+//   - 입력 파라메타 "address string" 추가 : 블록체인을 생성하고 제네시스 블록을 채굴한 사람에게 보상을 지급을 위함
+func CreateBlockchain(address string) *Blockchain {
+	db, err := bolt.Open(dbFile, 0600, nil)
+	if err != nil {
+		log.Panic(err)
 	}
-	txin := ST_TXInput{[]byte{}, -1, data}
-	txout := ST_TXOutput{subsidy, to}
-	tx := ST_Transaction{nil, []ST_TXInput{txin}, []ST_TXOutput{txout}}
-	tx.SetID()
-	return &tx
+
+	var l []byte
+
+	err = db.Update(func(tx *bolt.Tx) error {
+		b, err := tx.CreateBucket([]byte(BlocksBucket))
+		if err != nil {
+			log.Panic(err)
+		}
+
+		//genesis := NewBlock("Genesis Block", []byte{})
+		genesis := NewBlock([]*Transaction{NewCoinbaseTX("", address)}, []byte{})
+
+		err = b.Put(genesis.Hash, genesis.Serialize())
+		if err != nil {
+			log.Panic(err)
+		}
+
+		// "l" 키는 마지막 블록해시를 저장합니다.
+		err = b.Put([]byte("l"), genesis.Hash)
+		if err != nil {
+			log.Panic(err)
+		}
+
+		l = genesis.Hash
+
+		return nil
+	})
+	if err != nil {
+		log.Panic(err)
+	}
+
+	return &Blockchain{db, l}
+}
+
+// BlockchainIterator 를 사용하여 블록체인을 순회
+func (bc *Blockchain) List() {
+	bci := NewBlockchainIterator(bc)
+
+	for bci.HasNext() {
+		block := bci.Next()
+
+		fmt.Printf("PrevBlockHash: %x\n", block.PrevBlockHash)
+		fmt.Printf("Hash: %x\n", block.Hash)
+		fmt.Printf("Data: %s\n", block.Transactions)
+
+		pow := NewProofOfWork(block)
+		fmt.Println("pow:", pow.Validate(block))
+
+		fmt.Println()
+	}
 }
