@@ -12,6 +12,7 @@ This project is to development of Blockchain core(bitcoin)
  8. Transaction 기능 추가
  9. 지갑 추가
  10. 주소를 이용한 거래기능 추가
+ 11. 디지털 서명 추가
 
 Author: sectwo@gmail.com
 Date: 26 Dec, 2022
@@ -112,7 +113,16 @@ func NewBlockchain() *Blockchain {
 //
 // 8) 트랜잭션 기능으로 인한 변경점
 //   - NewBlock() 변경으로 입력 파라메타와 기능 수정
+//
+// 11) 서명 기능으로 인한 변경점
+//   - 블럭을 추가하기 이전에, 블록에 추가될 거래를 검증
 func (bc *Blockchain) AddBlock(transactions []*Transaction) {
+	for _, tx := range transactions {
+		if isVerified := bc.VerifyTransaction(tx); !isVerified {
+			log.Panic("ERROR: Invalid transaction")
+		}
+	}
+
 	block := NewBlock(transactions, bc.l)
 	err := bc.db.Update(func(tx *bolt.Tx) error {
 		b := tx.Bucket([]byte(BlocksBucket))
@@ -262,7 +272,7 @@ func (i *blockchainIterator) Next() *Block {
 // 반복자의 hash가 다음블록과 같은지 같지 않은지 비교 (작을땐 -1, 클땐 1, 같을땐 0)
 func (i *blockchainIterator) HasNext() bool {
 	result := bytes.Compare(i.hash, []byte{}) != 0
-	fmt.Println(result)
+	//fmt.Println(result)
 	return result
 }
 

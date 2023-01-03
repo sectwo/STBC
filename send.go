@@ -55,5 +55,8 @@ Work:
 		txout = append(txout, *NewTXOutput(acc-value, from))
 	}
 
-	return NewTransaction(txin, txout)
+	tx := NewTransaction(txin, txout)
+	bc.SignTransaction(wallet.PrivKey, tx)
+
+	return tx
 }

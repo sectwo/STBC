@@ -53,9 +53,9 @@ func (b *Block) HashTransaction() []byte {
 // 블록을 채굴하면 채굴자에게 보상을 주기위한 제일 첫 번째 트랜잭션을 위한 함수
 // 입력이 없고 채굴자에게 보상을 지급하기 위한 출력값만 존재
 // 10. 주소를 이용한 거래기능으로 인한 변경점
-//		- 코인베이스 트랜잭션을 생성할 때 주소를 받아옴
-//		- TXOutput 을 생성할 때 Base58CheckDecode 로 처리하고 공개키 해시를 출력에 넣어함
-//		- txout = TXOutput -> NewTXOutput()으로 변경
+//   - 코인베이스 트랜잭션을 생성할 때 주소를 받아옴
+//   - TXOutput 을 생성할 때 Base58CheckDecode 로 처리하고 공개키 해시를 출력에 넣어함
+//   - txout = TXOutput -> NewTXOutput()으로 변경
 func NewCoinbaseTX(data, to string) *Transaction {
 	txin := TXInput{[]byte{}, -1, nil, []byte(data)}
 	txout := NewTXOutput(subsidy, to)

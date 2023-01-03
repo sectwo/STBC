@@ -16,6 +16,22 @@ import (
 	"golang.org/x/crypto/ripemd160"
 )
 
+func JSONMarshal(t interface{}) ([]byte, error) {
+	buffer := &bytes.Buffer{}
+	encoder := json.NewEncoder(buffer)
+	encoder.SetEscapeHTML(false)
+	err := encoder.Encode(t)
+	return buffer.Bytes(), err
+}
+
+func (ks *KeyStore) JSON() ([]byte, error) {
+	buffer := &bytes.Buffer{}
+	encoder := json.NewEncoder(buffer)
+	encoder.SetEscapeHTML(false)
+	err := encoder.Encode(ks)
+	return buffer.Bytes(), err
+}
+
 func NewWallet() *Wallet {
 	curve := elliptic.P256()
 	privKey, err := ecdsa.GenerateKey(curve, rand.Reader)
@@ -87,8 +103,7 @@ func NewKeyStore() *KeyStore {
 // KeyStore 자체를 인코딩하여 저장함
 // 2023.01.02_sectwo : 저장시 오류 발생 수정 필요(.dat 파일에 재대로 저장되지 않는 오류) 해결을 위해 json 파일로 변경 시도 예정 ver0.7에서
 func (ks *KeyStore) Save() {
-
-	result, err := json.Marshal(ks)
+	result, err := JSONMarshal(ks)
 	if err != nil {
 		fmt.Println("error : ", err.Error())
 		log.Panic(err)
