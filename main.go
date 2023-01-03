@@ -10,6 +10,8 @@ This project is to development of Blockchain core(bitcoin)
  6. 영속성 부여(BlotDB 사용) - 기존 Blockchain이 가진 Block을 db로 변경
  7. 테스트를 위한 CLI 추가
  8. Transaction 기능 추가
+ 9. 지갑 추가
+ 10. 주소를 이용한 거래기능 추가
 
 Author: sectwo@gmail.com
 Date: 26 Dec, 2022

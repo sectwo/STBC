@@ -52,7 +52,7 @@ func HashPubKey(pubKey []byte) []byte {
 	return RIPEMD160Hasher.Sum(nil)
 }
 
-// wallet.dat 파일을 만들기 위한 함수
+// wallet.dat 파일을 만들기 위한 함수 -> wallet.dat에서 wallet.json으로 변경
 // 함수의 이름이 소문자로 시작하기때문에 외부에서 접근하지 않는 것을 전재로 함
 func createKeyStore() error {
 	file, err := os.OpenFile(walletFile, os.O_CREATE, 0644)
@@ -129,4 +129,11 @@ func (ks *KeyStore) CreateWallet() *Wallet {
 	ks.Save()
 
 	return wallet
+}
+
+// 공개키 해시가 입력에 사용된 .PubKey 와 동일한지 검사를 위한 메서드(추후 이동 필요)
+// UTXO(Unspent Transaction Output)와 관련된 메서드 및 함수에서 사용
+func (in *TXInput) UsesKey(pubKeyHash []byte) bool {
+	lockingHash := HashPubKey(in.PubKey)
+	return bytes.Compare(pubKeyHash, lockingHash) == 0
 }
